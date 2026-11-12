@@ -81,6 +81,43 @@ implied_volatility(8.0080, S=100, K=100, T=0.5, r=0.04)  # 0.2500001 (the input 
 
 ---
 
+## Multi-Leg Strategies
+
+`src/strategies.py` prices and analyses option combinations built from signed `Leg(option_type, strike, quantity)` objects. For a strategy $\{(q_i, K_i, \text{type}_i)\}$:
+
+$$
+\text{Value} = \sum_i q_i\,V_i(S,K_i,T,r,\sigma), \qquad
+\text{Payoff}(S_T)=\sum_i q_i\,\text{intrinsic}_i(S_T), \qquad
+\text{P\&L}(S_T)=\text{Payoff}(S_T)-\text{Value}(S_0)
+$$
+
+Position Greeks are the quantity-weighted sums of leg Greeks (each checked against finite differences of the strategy value). Because expiry P&L is piecewise linear with kinks only at the strikes, break-evens are found exactly by interpolation, and the maximum profit and loss come from the strike grid plus the net call quantity (which fixes the slope above the top strike).
+
+Built-ins: `long_straddle`, `long_strangle`, `bull_call_spread`, `bear_put_spread`, `butterfly`, `iron_condor`.
+
+Parameters: $S_0=100$, $T=0.5$, $r=4\%$, $\sigma=25\%$.
+
+| Strategy | Net premium | Break-evens | Max profit | Max loss |
+|---|---|---|---|---|
+| Long straddle (100) | 14.04 | 85.96, 114.04 | unbounded | 14.04 |
+| Bull call spread (95/105) | 5.01 | 100.01 | 4.99 | 5.01 |
+| Long butterfly (90/100/110) | 2.16 | 92.16, 107.84 | 7.84 | 2.16 |
+| Short iron condor (80/90/110/120) | -3.93 (credit) | 86.07, 113.93 | 3.93 | 6.07 |
+
+![Strategy P&L](./images/strategies_pnl.png)
+
+```python
+from src import strategies as st
+
+legs = st.iron_condor(80, 90, 110, 120)
+st.break_evens(legs, S0=100, T=0.5, r=0.04, sigma=0.25)   # [86.07, 113.93]
+st.greeks(legs, S=100, T=0.5, r=0.04, sigma=0.25)["vega"]
+```
+
+Regenerate the table and figure with `python -m src.strategy_plots`.
+
+---
+
 ## Tests
 
 ```bash
@@ -88,12 +125,13 @@ pip install -r requirements.txt pytest
 pytest -q
 ```
 
-133 tests cover:
+149 tests cover:
 
 - Reference prices from Hull and put–call parity.
 - Every Greek checked against a finite-difference estimate.
 - Implied volatility round trips across 120 combinations of strike, maturity and volatility, for calls and puts.
 - Error handling at the no-arbitrage bounds.
+- Multi-leg strategies: payoffs, additivity of value, convergence to payoff at expiry, position Greeks vs finite differences, break-evens and max profit/loss.
 
 CI runs the suite on Python 3.11, 3.12 and 3.13.
 
