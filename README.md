@@ -118,6 +118,57 @@ Regenerate the table and figure with `python -m src.strategy_plots`.
 
 ---
 
+## Delta-Hedging Simulation
+
+`src/delta_hedge.py` simulates the seller of a European option who collects the Black–Scholes premium, holds $\Delta$ shares, finances at $r$ and rebalances at $n$ equally spaced dates while the stock follows GBM with volatility $\sigma_{real}$. Each path's terminal wealth is discounted back to a present-value P&L.
+
+Two results are reproduced and tested:
+
+- **Hedging error shrinks like $1/\sqrt{n}$.** With $\sigma_{hedge}=\sigma_{real}$, the continuous-hedge limit has zero error; with $n$ rebalances the P&L standard deviation scales as $n^{-1/2}$ (the last column is roughly constant).
+- **Vol mismatch drives expected P&L.** If you hedge (and sell) at $\sigma_{hedge}$ but the stock realises $\sigma_{real}$, the seller's expected present-value P&L is
+
+$$
+\mathbb{E}\left[\text{P\&L}\right] = \tfrac12\left(\sigma_{hedge}^2-\sigma_{real}^2\right)\int_0^T e^{-rt}\,\mathbb{E}\!\left[S_t^2\,\Gamma_t\right]dt,
+$$
+
+which `expected_vol_mismatch_pnl` evaluates numerically. Selling rich implied vol earns money on average; selling cheap vol loses it.
+
+Setup: ATM call, $S_0=K=100$, $T=0.5$, $r=4\%$, $\sigma_{real}=25\%$, 20,000 paths, seed 0.
+
+| Rebalances | Std of P&L | Std × √n |
+|---|---|---|
+| 5 | 2.544 | 5.688 |
+| 10 | 1.824 | 5.767 |
+| 21 | 1.285 | 5.888 |
+| 63 | 0.757 | 6.009 |
+| 126 | 0.539 | 6.052 |
+| 252 | 0.382 | 6.067 |
+| 504 | 0.270 | 6.062 |
+
+Mean P&L when selling at a hedging (implied) vol different from the 25% realised, 126 rebalances:
+
+| Hedge vol | Simulated mean | Std. error | Analytic |
+|---|---|---|---|
+| 15% | -2.752 | 0.010 | -2.756 |
+| 20% | -1.377 | 0.006 | -1.381 |
+| 25% | +0.006 | 0.004 | +0.000 |
+| 30% | +1.391 | 0.005 | +1.382 |
+| 35% | +2.775 | 0.007 | +2.764 |
+
+![Delta hedging](./images/delta_hedging.png)
+
+```python
+from src.delta_hedge import simulate_delta_hedge
+
+res = simulate_delta_hedge(S0=100, K=100, T=0.5, r=0.04, sigma_real=0.25,
+                           sigma_hedge=0.35, n_steps=126)
+res.mean, res.stderr   # about +2.77, 0.007 
+```
+
+Regenerate the tables and figure with `python -m src.hedge_study`.
+
+---
+
 ## Tests
 
 ```bash
@@ -125,13 +176,14 @@ pip install -r requirements.txt pytest
 pytest -q
 ```
 
-149 tests cover:
+173 tests cover:
 
 - Reference prices from Hull and put–call parity.
 - Every Greek checked against a finite-difference estimate.
 - Implied volatility round trips across 120 combinations of strike, maturity and volatility, for calls and puts.
 - Error handling at the no-arbitrage bounds.
 - Multi-leg strategies: payoffs, additivity of value, convergence to payoff at expiry, position Greeks vs finite differences, break-evens and max profit/loss.
+- Delta hedging: zero mean error at matched vol, $n^{-1/2}$ error scaling, and simulated vs analytic expected P&L under vol mismatch (calls and puts).
 
 CI runs the suite on Python 3.11, 3.12 and 3.13.
 
